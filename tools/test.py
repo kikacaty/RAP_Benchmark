@@ -7,10 +7,12 @@ from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
 from mmcv.runner import get_dist_info, init_dist, load_checkpoint
 from mmcv.utils import DictAction
 
-from mmseg.apis import multi_gpu_test, single_gpu_test
+from mmseg.apis import multi_gpu_test, single_gpu_test, single_gpu_attack
 from mmseg.datasets import build_dataloader, build_dataset
 from mmseg.models import build_segmentor
 from IPython import embed
+
+from pdb import set_trace as st
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -61,7 +63,6 @@ def parse_args():
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(args.local_rank)
     return args
-
 
 def main():
     args = parse_args()
@@ -140,7 +141,9 @@ def main():
 
     if not distributed:
         model = MMDataParallel(model, device_ids=[0])
-        outputs = single_gpu_test(model, data_loader, args.show, args.show_dir,
+        # outputs = single_gpu_test(model, data_loader, args.show, args.show_dir,
+        #                           efficient_test)
+        outputs = single_gpu_attack(model, data_loader, args.show, args.show_dir,
                                   efficient_test)
     else:
         model = MMDistributedDataParallel(

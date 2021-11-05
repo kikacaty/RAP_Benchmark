@@ -56,6 +56,11 @@ class BaseSegmentor(nn.Module):
     def simple_test(self, img, img_meta, **kwargs):
         """Placeholder for single image test."""
         pass
+    
+    @abstractmethod
+    def simple_attack(self, img, img_meta, **kwargs):
+        """Placeholder for single image test."""
+        pass
 
     @abstractmethod
     def aug_test(self, imgs, img_metas, **kwargs):
@@ -73,7 +78,7 @@ class BaseSegmentor(nn.Module):
             logger = logging.getLogger()
             logger.info(f'load model from: {pretrained}')
 
-    def forward_test(self, imgs, img_metas, **kwargs):
+    def forward_test(self, imgs, img_metas, adv, **kwargs):
         """
         Args:
             imgs (List[Tensor]): the outer list indicates test-time
@@ -103,12 +108,15 @@ class BaseSegmentor(nn.Module):
             assert all(shape == pad_shapes[0] for shape in pad_shapes)
 
         if num_augs == 1:
-            return self.simple_test(imgs[0], img_metas[0], **kwargs)
+            if adv:
+                return self.simple_attack(imgs[0], img_metas[0], **kwargs)
+            else:
+                return self.simple_test(imgs[0], img_metas[0], **kwargs)
         else:
             return self.aug_test(imgs, img_metas, **kwargs)
 
     @auto_fp16(apply_to=('img', ))
-    def forward(self, img, img_metas, return_loss=True, **kwargs):
+    def forward(self, img, img_metas, return_loss=True, adv=False, **kwargs):
         """Calls either :func:`forward_train` or :func:`forward_test` depending
         on whether ``return_loss`` is ``True``.
 
@@ -121,7 +129,7 @@ class BaseSegmentor(nn.Module):
         if return_loss:
             return self.forward_train(img, img_metas, **kwargs)
         else:
-            return self.forward_test(img, img_metas, **kwargs)
+            return self.forward_test(img, img_metas, adv, **kwargs)
 
     def train_step(self, data_batch, optimizer, **kwargs):
         """The iteration step during training.

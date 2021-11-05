@@ -12,6 +12,8 @@ from mmcv.runner import get_dist_info
 from IPython import embed
 from mmseg.ops import resize
 
+from pdb import set_trace as st
+
 def np2tmp(array, temp_file_name=None):
     """Save ndarray to local numpy file.
 
@@ -31,6 +33,78 @@ def np2tmp(array, temp_file_name=None):
     np.save(temp_file_name, array)
     return temp_file_name
 
+
+def single_gpu_attack(model,
+                    data_loader,
+                    show=False,
+                    out_dir=None,
+                    efficient_test=False):
+    """Attack with single GPU.
+
+    Args:
+        model (nn.Module): Model to be tested.
+        data_loader (utils.data.Dataloader): Pytorch data loader.
+        show (bool): Whether show results during infernece. Default: False.
+        out_dir (str, optional): If specified, the results will be dumped into
+            the directory to save output results.
+        efficient_test (bool): Whether save the results as local numpy files to
+            save CPU memory during evaluation. Default: False.
+
+    Returns:
+        list: The prediction results.
+    """
+
+    model.eval()
+    results = []
+    dataset = data_loader.dataset
+    prog_bar = mmcv.ProgressBar(len(dataset))
+    for i, data in enumerate(data_loader):
+        # with torch.no_grad():
+        
+        adv = True
+        result, adv_img = model(return_loss=False, adv=adv, **data)
+        
+        if show or out_dir:
+            if adv:
+                img_tensor = adv_img
+            else:
+                img_tensor = data['img'][0]
+            img_metas = data['img_metas'][0].data[0]
+            imgs = tensor2imgs(img_tensor, **img_metas[0]['img_norm_cfg'])
+            assert len(imgs) == len(img_metas)
+
+            for img, img_meta in zip(imgs, img_metas):
+                h, w, _ = img_meta['img_shape']
+                img_show = img[:h, :w, :]
+
+                ori_h, ori_w = img_meta['ori_shape'][:-1]
+                img_show = mmcv.imresize(img_show, (ori_w, ori_h))
+
+                if out_dir:
+                    out_file = osp.join(out_dir, img_meta['ori_filename'])
+                else:
+                    out_file = None
+
+                model.module.show_result(
+                    img_show,
+                    result,
+                    palette=dataset.PALETTE,
+                    show=show,
+                    out_file=out_file)
+
+        if isinstance(result, list):
+            if efficient_test:
+                result = [np2tmp(_) for _ in result]
+            results.extend(result)
+        else:
+            if efficient_test:
+                result = np2tmp(result)
+            results.append(result)
+
+        batch_size = data['img'][0].size(0)
+        for _ in range(batch_size):
+            prog_bar.update()
+    return results
 
 def single_gpu_test(model,
                     data_loader,

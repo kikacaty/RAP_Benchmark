@@ -8,6 +8,30 @@ from .. import builder
 from ..builder import SEGMENTORS
 from .base import BaseSegmentor
 
+# attack
+from pdb import set_trace as st
+from PIL import Image, ImageEnhance
+import numpy as np
+import kornia
+
+
+class TVLoss(nn.Module):
+    def __init__(self,TVLoss_weight=1):
+        super(TVLoss,self).__init__()
+        self.TVLoss_weight = TVLoss_weight
+
+    def forward(self,x):
+        batch_size = x.size()[0]
+        h_x = x.size()[2]
+        w_x = x.size()[3]
+        count_h = self._tensor_size(x[:,:,1:,:])
+        count_w = self._tensor_size(x[:,:,:,1:])
+        h_tv = torch.pow((x[:,:,1:,:]-x[:,:,:h_x-1,:]),2).sum()
+        w_tv = torch.pow((x[:,:,:,1:]-x[:,:,:,:w_x-1]),2).sum()
+        return self.TVLoss_weight*2*(h_tv/count_h+w_tv/count_w)/batch_size
+
+    def _tensor_size(self,t):
+        return t.size()[1]*t.size()[2]*t.size()[3]
 
 @SEGMENTORS.register_module()
 class EncoderDecoder(BaseSegmentor):
@@ -249,6 +273,7 @@ class EncoderDecoder(BaseSegmentor):
         else:
             seg_logit = self.whole_inference(img, img_meta, rescale)
         output = F.softmax(seg_logit, dim=1)
+        
         flip = img_meta[0]['flip']
         if flip:
             flip_direction = img_meta[0]['flip_direction']
@@ -272,6 +297,192 @@ class EncoderDecoder(BaseSegmentor):
         # unravel batch dim
         seg_pred = list(seg_pred)
         return seg_pred
+    
+    
+    
+    def pgd_t(self, image, label, target_mask, patch_init, patch_orig, img_meta, rescale,
+        step_size = 0.1, eps=10/255., iters=10, alpha = 1e-1, beta = 2., restarts=1, 
+        target_label=None, rap=False, init_tf_pts=None, patch_mask = None, deeplab=False):
+        
+        NORM_MEAN = np.array([0.29010095242892997, 0.32808144844279574, 0.28696394422942517])
+        NORM_STD = np.array([0.1829540508368939, 0.18656561047509476, 0.18447508988480435])
+
+        
+        images = image
+        label = torch.from_numpy(label)
+        t_labels = torch.ones_like(label)
+        labels = t_labels.cuda()
+        patches = patch_init.cuda()
+
+        u_labels = label.cuda()
+
+        # images = torch.autograd.Variable(images)
+        # labels = torch.autograd.Variable(labels)
+        u_labels = torch.autograd.Variable(u_labels)
+
+        target_mask = torch.from_numpy(target_mask).cuda()
+
+        mean = torch.from_numpy(NORM_MEAN).float().cuda().unsqueeze(0)
+        mean = mean[..., None, None]
+        std = torch.from_numpy(NORM_STD).float().cuda().unsqueeze(0)
+        std = std[..., None, None]
+
+        # loss = nn.CrossEntropyLoss()
+        if deeplab:
+            loss = nn.CrossEntropyLoss(ignore_index=255)
+        else:
+            loss = nn.NLLLoss2d(ignore_index=255)
+
+        tv_loss = TVLoss()
+
+        # h_loss = houdini_loss()
+
+        best_adv_img = [torch.zeros_like(images.data), -1e8]
+
+        # init transformation matrix
+        h, w = images.shape[-2:]  # destination size
+        points_src = torch.FloatTensor(init_tf_pts[0]).unsqueeze(0)
+
+        # the destination points are the image vertexes
+        points_dst = torch.FloatTensor(init_tf_pts[1]).unsqueeze(0)
+
+        M: torch.tensor = kornia.get_perspective_transform(points_dst, points_src).cuda()
+
+        if patch_mask is None:
+            patch_mask_var = torch.ones_like(patches)
+        else:
+            patch_mask_var = patch_mask
+        t_patch_mask_var = kornia.warp_perspective(patch_mask_var.float(), M, dsize=(h, w))
+
+        ori_patches = patch_orig.data
+
+        best_adv_patches = [torch.zeros_like(patches),-1e8]
+
+        for j in range(restarts):
+            delta = torch.rand_like(patches, requires_grad=True)
+            delta = torch.zeros_like(patches, requires_grad=True)
+            # delta.data = (delta.data * 2 * eps - eps) * perturb_mask
+
+            for i in range(iters) :
+
+                step_size  = np.max([1e-3, step_size * 0.99])
+                images.requires_grad = False
+                patches.requires_grad = False
+                delta.requires_grad = True
+                patch_mask_var.requires_grad = False
+
+                t_patch: torch.tensor = kornia.warp_perspective((patches+delta).float(), M, dsize=(h, w))
+
+                adv_images = (torch.clamp(t_patch*t_patch_mask_var+(1-t_patch_mask_var)*(images*std+mean),min=0, max=1)- mean)/std
+
+
+                outputs = self.inference(adv_images, img_meta, rescale)
+
+                self.zero_grad()
+            
+                # remove attack
+                # cost = - loss(outputs*target_mask*upper_mask, labels*2*target_mask*upper_mask) - alpha * loss(outputs*perturb_mask[:,0,:,:], u_labels*perturb_mask[:,0,:,:])
+
+                # rap attack
+                if rap:
+                    if target_label != None:
+                        # target attack
+                        obj_loss_value = - loss(outputs*target_mask, labels*target_label*target_mask)
+                        tv_loss_value = tv_loss(ori_patches + delta)
+                        cost = alpha * obj_loss_value + (1-alpha) * tv_loss_value
+                    else:
+                        # untargeted attack
+                        obj_loss_value = loss(outputs*target_mask, u_labels*target_mask)
+                        tv_loss_value = tv_loss(ori_patches + delta)
+                        cost = alpha * obj_loss_value + (1-alpha) * tv_loss_value
+
+                cost.backward()
+                print(i,cost.data, obj_loss_value.data, tv_loss_value.data)
+
+                adv_patches = patches + delta + step_size*eps*delta.grad.sign()
+                eta = torch.clamp(adv_patches - ori_patches, min=-eps, max=eps)
+                delta = torch.clamp(ori_patches + eta, min=0, max=1).detach_() - patches
+
+                if cost.cpu().data.numpy() > best_adv_patches[1]:
+                    best_adv_patches = [delta.data, cost.cpu().data.numpy()]
+
+        t_patch: torch.tensor = kornia.warp_perspective((patches+best_adv_patches[0]).float(), M, dsize=(h, w))
+
+        adv_images = (torch.clamp(t_patch*t_patch_mask_var+(1-t_patch_mask_var)*(images*std+mean),min=0, max=1)- mean)/std
+
+        return adv_images, best_adv_patches[0]+patches, t_patch_mask_var.cpu().data.numpy()
+    
+    def simple_attack(self, img, img_meta, rescale=True):
+        """Simple test with single image."""
+        with torch.no_grad():
+            seg_logit = self.inference(img, img_meta, rescale)
+            seg_pred = seg_logit.argmax(dim=1)
+            label = seg_pred.cpu().numpy()
+        
+        # if torch.onnx.is_in_onnx_export():
+        #     # our inference backend only support 4D output
+        #     seg_pred = seg_pred.unsqueeze(0)
+        #     return seg_pred
+        # label = np.ones([1,1024,2048],dtype=np.long)
+        
+        torch.cuda.empty_cache()
+        
+        # rap attack
+        
+        target_labels = [
+            5,6,7, # object: pole, traffic light, traffic sign
+            11,12, # human: person, rider
+            13,14,15,16,17,18 # vehicle: car, truck, bus, train, motorcycle, bicycle
+        ]
+        
+        h, w = img.size()[2:4]
+
+        init_tf_pts = np.array([
+                [[0, h-300], [300 - 1, h-300], [300 - 1, h - 1], [0, h - 1]],
+                # [[928, 574],[1205, 574],[1262, 663],[851, 664]], # small
+                # [[970, 507],[1161, 507],[1287, 664],[851, 664]], # large
+                [[0, 0], [300 - 1, 0], [300 - 1, 300 - 1], [0, 300 - 1]],
+                # [[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]]
+            ]).astype(np.int)
+
+        patch_im = Image.open('phy_exp/cropped_patch.jpg')
+        patch_img = np.zeros_like(img.cpu())
+        p_img = np.array(patch_im.resize((300,300)))/255.
+        p_img = np.moveaxis(p_img,-1,0)
+        patch_img[0,:,:300,:300] = p_img
+
+        patch_orig = torch.from_numpy(patch_img).cuda()
+        adv_patch = torch.from_numpy(patch_img).cuda()
+
+        patch_mask = np.zeros_like(patch_img)
+        patch_mask[0,:,:300,:300] = 1
+        patch_mask = torch.from_numpy(patch_mask).cuda()
+        
+        target_mask = np.zeros_like(label)
+        # target_mask[:,300:800,800:1300] = 1
+        # target_mask[:,int(h/2-200):int(h/2+200),int(w/2-200):int(w/2+200)] = 1
+        target_mask = np.ones_like(label)
+        eval_target_mask = target_mask.copy()
+        # target_mask = (np.any([label == id for id in target_labels],axis = 0) & (target_mask == 1)).astype(np.int8) 
+        target_mask = target_mask.astype(np.int8) 
+        loss_mask = target_mask.copy()
+        
+        
+        adv_image, adv_patch = self.pgd_t(img,label,loss_mask,adv_patch,patch_orig, img_meta, rescale,
+                    init_tf_pts=init_tf_pts, 
+                    step_size = 0.1, eps=200./255, iters=50, 
+                    # target_label = 2,
+                    deeplab=True,
+                    alpha=1., beta=1, restarts=1, rap=True,  patch_mask=patch_mask)[:2]
+        
+        
+        seg_logit = self.inference(adv_image, img_meta, rescale)
+        adv_label = seg_logit.argmax(dim=1)
+        adv_label = adv_label.cpu().numpy()
+        
+        # unravel batch dim
+        adv_label = list(adv_label)
+        return adv_label, adv_image
 
     def aug_test(self, imgs, img_metas, rescale=True):
         """Test with augmentations.
