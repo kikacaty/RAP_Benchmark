@@ -31,6 +31,22 @@ test_pipeline = [
             dict(type='Collect', keys=['img']),
         ])
 ]
+adv_pipeline = [
+    dict(type='LoadImageFromFile'),
+    dict(type='LoadAnnotations'),
+    dict(
+        type='MultiScaleFlipAug',
+        img_scale=(2048, 1024),
+        # img_ratios=[0.5, 0.75, 1.0, 1.25, 1.5, 1.75],
+        flip=False,
+        transforms=[
+            dict(type='Resize', keep_ratio=True),
+            dict(type='RandomFlip'),
+            dict(type='Normalize', **img_norm_cfg),
+            dict(type='ImageToTensor', keys=['img']),
+            dict(type='Collect', keys=['img','gt_semantic_seg']),
+        ])
+]
 data = dict(
     samples_per_gpu=2,
     workers_per_gpu=2,
@@ -51,4 +67,10 @@ data = dict(
         data_root=data_root,
         img_dir='leftImg8bit/val',
         ann_dir='gtFine/val',
-        pipeline=test_pipeline))
+        pipeline=test_pipeline),
+    adv=dict(
+        type=dataset_type,
+        data_root=data_root,
+        img_dir='leftImg8bit/val',
+        ann_dir='gtFine/val',
+        pipeline=adv_pipeline))

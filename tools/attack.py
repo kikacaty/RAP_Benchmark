@@ -120,7 +120,7 @@ def main():
 
     # build the dataloader
     # TODO: support multiple images per gpu (only minor changes are needed)
-    dataset = build_dataset(cfg.data.test)
+    dataset = build_dataset(cfg.data.adv)
     data_loader = build_dataloader(
         dataset,
         samples_per_gpu=1,
@@ -141,10 +141,10 @@ def main():
 
     if not distributed:
         model = MMDataParallel(model, device_ids=[0])
-        outputs = single_gpu_test(model, data_loader, args.show, args.show_dir,
-                                  efficient_test)
-        # outputs = single_gpu_attack(model, data_loader, args.show, args.show_dir,
+        # outputs = single_gpu_test(model, data_loader, args.show, args.show_dir,
         #                           efficient_test)
+        outputs = single_gpu_attack(model, data_loader, args.show, args.show_dir,
+                                  efficient_test)
     else:
         model = MMDistributedDataParallel(
             model.cuda(),

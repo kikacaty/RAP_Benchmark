@@ -58,12 +58,21 @@ def single_gpu_attack(model,
     results = []
     dataset = data_loader.dataset
     prog_bar = mmcv.ProgressBar(len(dataset))
+
+    # import matplotlib.pyplot as plt
+    # grad_imgs = np.zeros([1024,2048,3])
+
     for i, data in enumerate(data_loader):
         # with torch.no_grad():
+
+        if 'frankfurt_000000_000294_leftImg8bit.png' not in data['img_metas'][0].data[0][0]['filename']:
+            continue
         
         adv = True
         result, adv_img = model(return_loss=False, adv=adv, **data)
-        
+        # result, adv_img, grad_img = model(return_loss=False, adv=adv, **data)
+        # grad_imgs += grad_img
+
         if show or out_dir:
             if adv:
                 img_tensor = adv_img
@@ -104,6 +113,10 @@ def single_gpu_attack(model,
         batch_size = data['img'][0].size(0)
         for _ in range(batch_size):
             prog_bar.update()
+    
+    # grad_img = grad_imgs/500.
+    # np.save('work_dirs/erf/test.npy',grad_img)
+
     return results
 
 def single_gpu_test(model,
