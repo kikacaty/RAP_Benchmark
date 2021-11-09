@@ -634,7 +634,7 @@ class EncoderDecoder(BaseSegmentor):
         
         adv_image, adv_patch = self.pgd_opt(img,label,loss_mask,adv_patch,patch_orig, img_meta, rescale,
                     init_tf_pts=init_tf_pts, 
-                    step_size = 1e-1, eps=200./255, iters=100, 
+                    step_size = 1e-2, eps=200./255, iters=100, 
                     # target_label = 2,
                     deeplab=True,
                     alpha=1, beta=1, restarts=1, rap=True,  patch_mask=patch_mask)[:2]
