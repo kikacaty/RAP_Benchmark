@@ -13,6 +13,24 @@ from IPython import embed
 from mmseg.ops import resize
 
 from pdb import set_trace as st
+from mmseg.core.evaluation.metrics import intersect_and_union
+
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
 
 def np2tmp(array, temp_file_name=None):
     """Save ndarray to local numpy file.
@@ -59,19 +77,36 @@ def single_gpu_attack(model,
     dataset = data_loader.dataset
     prog_bar = mmcv.ProgressBar(len(dataset))
 
+    intersection_meter = AverageMeter()
+    union_meter = AverageMeter()
+    target_meter = AverageMeter()
     # import matplotlib.pyplot as plt
     # grad_imgs = np.zeros([1024,2048,3])
 
     for i, data in enumerate(data_loader):
         # with torch.no_grad():
 
-        if 'frankfurt_000000_000294_leftImg8bit.png' not in data['img_metas'][0].data[0][0]['filename']:
-            continue
+        # if 'frankfurt_000000_000294_leftImg8bit.png' not in data['img_metas'][0].data[0][0]['filename']:
+        #     continue
         
         adv = True
         result, adv_img = model(return_loss=False, adv=adv, **data)
         # result, adv_img, grad_img = model(return_loss=False, adv=adv, **data)
         # grad_imgs += grad_img
+
+        area_intersect, area_union, area_pred_label, area_label = \
+                intersect_and_union(result[0], data['gt_semantic_seg'][0].cpu().numpy()[0], 19, 255)
+
+        intersection_meter.update(area_intersect)
+        union_meter.update(area_union)
+        target_meter.update(area_label)
+
+        iou_class = intersection_meter.sum / (union_meter.sum + 1e-10)
+        accuracy_class = intersection_meter.sum / (target_meter.sum + 1e-10)
+        mIoU = np.mean(iou_class)
+        mAcc = np.mean(accuracy_class)
+
+        print('\nmIoU: {0}, mAcc: {1}'.format(mIoU, mAcc))
 
         if show or out_dir:
             if adv:
