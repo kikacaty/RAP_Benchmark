@@ -6,7 +6,7 @@ pip install opencv-python==4.5.1.48
 pip install cityscapesscripts
 pip install -e . --user
 
-pip install kornia
+pip install kornia==0.5.1
 
 # prepare dataset
 cp /cityscapes/*.zip data/cityscapes/
