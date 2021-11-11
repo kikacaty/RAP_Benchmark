@@ -94,8 +94,15 @@ def single_gpu_attack(model,
         # result, adv_img, grad_img = model(return_loss=False, adv=adv, **data)
         # grad_imgs += grad_img
 
+        h, w = adv_img.size()[2:4]
+        crop_result = result[0][int(h/2-200):int(h/2+200),int(w/2-200):int(w/2+200)]
+        crop_gt = data['gt_semantic_seg'][0].cpu().numpy()[0][int(h/2-200):int(h/2+200),int(w/2-200):int(w/2+200)]
+
+        # area_intersect, area_union, area_pred_label, area_label = \
+        #         intersect_and_union(result[0], data['gt_semantic_seg'][0].cpu().numpy()[0], 19, 255)
         area_intersect, area_union, area_pred_label, area_label = \
-                intersect_and_union(result[0], data['gt_semantic_seg'][0].cpu().numpy()[0], 19, 255)
+                intersect_and_union(crop_result, crop_gt, 19, 255)
+
 
         intersection_meter.update(area_intersect)
         union_meter.update(area_union)
@@ -107,6 +114,13 @@ def single_gpu_attack(model,
         mAcc = np.mean(accuracy_class)
 
         print('\nmIoU: {0}, mAcc: {1}'.format(mIoU, mAcc))
+        target_labels = [
+            5,6,7, # object: pole, traffic light, traffic sign
+            11,12, # human: person, rider
+            13,14,15,16,17,18 # vehicle: car, truck, bus, train, motorcycle, bicycle
+        ]
+        print(iou_class[target_labels])
+        print(accuracy_class[target_labels])
 
         if show or out_dir:
             if adv:
@@ -135,6 +149,11 @@ def single_gpu_attack(model,
                     palette=dataset.PALETTE,
                     show=show,
                     out_file=out_file)
+
+            iou_out_file = osp.join(out_dir, 'iou_class.npy')
+            np.save(iou_out_file,iou_class)
+            acc_out_file = osp.join(out_dir, 'acc_class.npy')
+            np.save(acc_out_file,accuracy_class)
 
         if isinstance(result, list):
             if efficient_test:

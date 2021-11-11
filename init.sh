@@ -10,5 +10,6 @@ pip install kornia==0.5.1
 
 # prepare dataset
 cp /cityscapes/*.zip data/cityscapes/
-yes | unzip data/cityscapes/*.zip -d data/cityscapes/
+yes | unzip data/cityscapes/gtFine_trainvaltest.zip -d data/cityscapes/
+yes | unzip data/cityscapes/leftImg8bit_trainvaltest.zip -d data/cityscapes/
 python tools/convert_datasets/cityscapes.py data/cityscapes --nproc 8
