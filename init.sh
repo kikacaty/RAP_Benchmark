@@ -8,7 +8,12 @@ pip install -e . --user
 
 pip install kornia==0.5.1
 
+apt-get update
+yes | apt install libgl1-mesa-glx
+
 # prepare dataset
-cp /cityscapes/*.zip data/cityscapes/
-yes | unzip data/cityscapes/*.zip -d data/cityscapes/
+cp /cityscapes/.zip data/cityscapes/
+yes | unzip data/cityscapes/gtFine_trainvaltest.zip -d data/cityscapes/
+yes | unzip data/cityscapes/leftImg8bit_trainvaltest.zip -d data/cityscapes/
+
 python tools/convert_datasets/cityscapes.py data/cityscapes --nproc 8

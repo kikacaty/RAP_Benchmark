@@ -569,6 +569,7 @@ class EncoderDecoder(BaseSegmentor):
         #     seg_pred = seg_logit.argmax(dim=1)
         #     label = seg_pred.cpu().numpy()
         
+        label = gt_semantic_seg[0].cpu().numpy().astype(np.long)
 
         # calculate ERF
         # img.requires_grad = True
@@ -577,9 +578,6 @@ class EncoderDecoder(BaseSegmentor):
         # cost.backward()
 
         # grad_img = np.moveaxis(img.grad.cpu().numpy()[0],0,-1)
-
-
-        label = gt_semantic_seg[0].cpu().numpy().astype(np.long)
 
         # return list(label), img, grad_img
 
@@ -624,9 +622,9 @@ class EncoderDecoder(BaseSegmentor):
         patch_mask = torch.from_numpy(patch_mask).cuda()
         
         target_mask = np.zeros_like(label)
-        # target_mask[:,300:800,800:1300] = 1
+        target_mask[:,300:800,800:1300] = 1
         # target_mask[:,int(h/2-200):int(h/2+200),int(w/2-200):int(w/2+200)] = 1
-        target_mask = np.ones_like(label)
+        # target_mask = np.ones_like(label)
         eval_target_mask = target_mask.copy()
         # target_mask = (np.any([label == id for id in target_labels],axis = 0) & (target_mask == 1)).astype(np.long) 
         target_mask = target_mask.astype(np.int8) 
@@ -634,16 +632,26 @@ class EncoderDecoder(BaseSegmentor):
         
         adv_image, adv_patch = self.pgd_opt(img,label,loss_mask,adv_patch,patch_orig, img_meta, rescale,
                     init_tf_pts=init_tf_pts, 
-                    step_size = 1e-2, eps=200./255, iters=100, 
-                    # target_label = 2,
+                    step_size = 1e-2, eps=200./255, iters=1, 
+                    target_label = 2,
                     deeplab=True,
                     alpha=1, beta=1, restarts=1, rap=True,  patch_mask=patch_mask)[:2]
         
         
-        seg_logit = self.inference(adv_image, img_meta, rescale)
-        adv_label = seg_logit.argmax(dim=1)
-        adv_label = adv_label.cpu().numpy()
+        # seg_logit = self.inference(adv_image, img_meta, rescale)
+        # adv_label = seg_logit.argmax(dim=1)
+        # adv_label = adv_label.cpu().numpy()
         
+        # calculate adv ERF
+        adv_image.requires_grad = True
+        seg_logit = self.inference(adv_image, img_meta, rescale)
+        cost = seg_logit[0,0,512,1024]
+        cost.backward()
+
+        grad_img = np.moveaxis(adv_image.grad.cpu().numpy()[0],0,-1)
+
+        return list(label), adv_image, grad_img
+
         # unravel batch dim
         adv_label = list(adv_label)
         return adv_label, adv_image

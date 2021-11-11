@@ -80,8 +80,8 @@ def single_gpu_attack(model,
     intersection_meter = AverageMeter()
     union_meter = AverageMeter()
     target_meter = AverageMeter()
-    # import matplotlib.pyplot as plt
-    # grad_imgs = np.zeros([1024,2048,3])
+    import matplotlib.pyplot as plt
+    grad_imgs = np.zeros([1024,2048,3])
 
     for i, data in enumerate(data_loader):
         # with torch.no_grad():
@@ -90,23 +90,29 @@ def single_gpu_attack(model,
         #     continue
         
         adv = True
-        result, adv_img = model(return_loss=False, adv=adv, **data)
-        # result, adv_img, grad_img = model(return_loss=False, adv=adv, **data)
-        # grad_imgs += grad_img
+        grad_analysis = True
 
-        area_intersect, area_union, area_pred_label, area_label = \
-                intersect_and_union(result[0], data['gt_semantic_seg'][0].cpu().numpy()[0], 19, 255)
+        if grad_analysis:
+            result, adv_img, grad_img = model(return_loss=False, adv=adv, **data)
+            grad_imgs += grad_img
+        else:
+            result, adv_img = model(return_loss=False, adv=adv, **data)
 
-        intersection_meter.update(area_intersect)
-        union_meter.update(area_union)
-        target_meter.update(area_label)
 
-        iou_class = intersection_meter.sum / (union_meter.sum + 1e-10)
-        accuracy_class = intersection_meter.sum / (target_meter.sum + 1e-10)
-        mIoU = np.mean(iou_class)
-        mAcc = np.mean(accuracy_class)
+            # measure miou
+            area_intersect, area_union, area_pred_label, area_label = \
+                    intersect_and_union(result[0], data['gt_semantic_seg'][0].cpu().numpy()[0], 19, 255)
 
-        print('\nmIoU: {0}, mAcc: {1}'.format(mIoU, mAcc))
+            intersection_meter.update(area_intersect)
+            union_meter.update(area_union)
+            target_meter.update(area_label)
+
+            iou_class = intersection_meter.sum / (union_meter.sum + 1e-10)
+            accuracy_class = intersection_meter.sum / (target_meter.sum + 1e-10)
+            mIoU = np.mean(iou_class)
+            mAcc = np.mean(accuracy_class)
+
+            print('\nmIoU: {0}, mAcc: {1}'.format(mIoU, mAcc))
 
         if show or out_dir:
             if adv:
@@ -136,6 +142,9 @@ def single_gpu_attack(model,
                     show=show,
                     out_file=out_file)
 
+            iou_filename = osp.join(out_dir, 'iou_class.npy')
+            np.save(iou_filename, iou_class)
+
         if isinstance(result, list):
             if efficient_test:
                 result = [np2tmp(_) for _ in result]
@@ -149,8 +158,9 @@ def single_gpu_attack(model,
         for _ in range(batch_size):
             prog_bar.update()
     
-    # grad_img = grad_imgs/500.
-    # np.save('work_dirs/erf/test.npy',grad_img)
+    if grad_analysis:
+        grad_img = grad_imgs/500.
+        np.save('work_dirs/erf/test.npy',grad_img)
 
     return results
 
