@@ -119,8 +119,8 @@ def single_gpu_attack(model,
             11,12, # human: person, rider
             13,14,15,16,17,18 # vehicle: car, truck, bus, train, motorcycle, bicycle
         ]
-        print(iou_class[target_labels])
-        print(accuracy_class[target_labels])
+        print(iou_class)
+        print(accuracy_class)
 
         if show or out_dir:
             if adv:
