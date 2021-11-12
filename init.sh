@@ -12,7 +12,7 @@ apt-get update
 yes | apt install libgl1-mesa-glx
 
 # prepare dataset
-cp /cityscapes/.zip data/cityscapes/
+cp /cityscapes/*.zip data/cityscapes/
 yes | unzip data/cityscapes/gtFine_trainvaltest.zip -d data/cityscapes/
 yes | unzip data/cityscapes/leftImg8bit_trainvaltest.zip -d data/cityscapes/
 
