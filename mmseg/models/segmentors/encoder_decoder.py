@@ -603,8 +603,8 @@ class EncoderDecoder(BaseSegmentor):
         h, w = img.size()[2:4]
 
         init_tf_pts = np.array([
-                # [[0, h-300], [300 - 1, h-300], [300 - 1, h - 1], [0, h - 1]],
-                [[928, 574],[1205, 574],[1262, 663],[851, 664]], # small
+                [[0, h-300], [300 - 1, h-300], [300 - 1, h - 1], [0, h - 1]],
+                # [[928, 574],[1205, 574],[1262, 663],[851, 664]], # small
                 # [[970, 507],[1161, 507],[1287, 664],[851, 664]], # large
                 [[0, 0], [300 - 1, 0], [300 - 1, 300 - 1], [0, 300 - 1]],
                 # [[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]]
@@ -614,6 +614,7 @@ class EncoderDecoder(BaseSegmentor):
         patch_img = np.zeros_like(img.cpu())
         p_img = np.array(patch_im.resize((300,300)))/255.
         p_img = np.moveaxis(p_img,-1,0)
+        p_img = np.ones_like(p_img) * 0.5
         patch_img[0,:,:300,:300] = p_img
 
         patch_orig = torch.from_numpy(patch_img).cuda()
@@ -625,10 +626,10 @@ class EncoderDecoder(BaseSegmentor):
         
         target_mask = np.zeros_like(label)
         # target_mask[:,300:800,800:1300] = 1
-        target_mask[:,int(h/2-200):int(h/2+200),int(w/2-200):int(w/2+200)] = 1
-        # target_mask = np.ones_like(label)
+        # target_mask[:,int(h/2-200):int(h/2+200),int(w/2-200):int(w/2+200)] = 1
+        target_mask = np.ones_like(label)
         eval_target_mask = target_mask.copy()
-        target_mask = (np.any([label == id for id in target_labels],axis = 0) & (target_mask == 1)).astype(np.long) 
+        # target_mask = (np.any([label == id for id in target_labels],axis = 0) & (target_mask == 1)).astype(np.long) 
         target_mask = target_mask.astype(np.int8) 
         loss_mask = target_mask.copy()
 
@@ -638,7 +639,7 @@ class EncoderDecoder(BaseSegmentor):
             adv_image, adv_patch = self.pgd_t(img,label,loss_mask,adv_patch,patch_orig, img_meta, rescale,
                         init_tf_pts=init_tf_pts, 
                         step_size = 1e-2, eps=200./255, iters=300, 
-                        target_label = 2,
+                        # target_label = 2,
                         deeplab=True,
                         alpha=1, beta=1, restarts=1, rap=True,  patch_mask=patch_mask, log=False)[:2]
         
