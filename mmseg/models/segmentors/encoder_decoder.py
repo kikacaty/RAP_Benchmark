@@ -640,7 +640,7 @@ class EncoderDecoder(BaseSegmentor):
                         step_size = 1e-2, eps=200./255, iters=300, 
                         target_label = 2,
                         deeplab=True,
-                        alpha=1, beta=1, restarts=1, rap=True,  patch_mask=patch_mask, log=True)[:2]
+                        alpha=1, beta=1, restarts=1, rap=True,  patch_mask=patch_mask, log=False)[:2]
         
         
         seg_logit = self.inference(adv_image, img_meta, rescale)
