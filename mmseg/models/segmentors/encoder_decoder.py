@@ -608,10 +608,11 @@ class EncoderDecoder(BaseSegmentor):
                 # [[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]]
             ]).astype(np.int)
 
-        patch_im = Image.open('phy_exp/cropped_patch.jpg')
+        patch_im = Image.open('phy_exp/cropped_patch_1.jpg')
         patch_img = np.zeros_like(img.cpu())
         p_img = np.array(patch_im.resize((300,300)))/255.
         p_img = np.moveaxis(p_img,-1,0)
+        p_img = np.ones_like(p_img) * 0.5
         patch_img[0,:,:300,:300] = p_img
 
         patch_orig = torch.from_numpy(patch_img).cuda()
