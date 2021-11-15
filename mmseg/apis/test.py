@@ -122,6 +122,8 @@ def single_gpu_attack(model,
         print(iou_class[target_labels])
         print(accuracy_class[target_labels])
 
+        print(' & '.join(['{0:.2f}'.format(num*100) for num in iou_class[target_labels]]))
+
         if show or out_dir:
             if adv:
                 img_tensor = adv_img

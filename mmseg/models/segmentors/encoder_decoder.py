@@ -564,11 +564,14 @@ class EncoderDecoder(BaseSegmentor):
     
     def simple_attack(self, img, img_meta,gt_semantic_seg, rescale=True):
         """Simple test with single image."""
-        # with torch.no_grad():
-        #     seg_logit = self.inference(img, img_meta, rescale)
-        #     seg_pred = seg_logit.argmax(dim=1)
-        #     label = seg_pred.cpu().numpy()
+
+        with torch.no_grad():
+            seg_logit = self.inference(img, img_meta, rescale)
+            seg_pred = seg_logit.argmax(dim=1)
+            label = seg_pred.cpu().numpy()
         
+        return list(label), img
+
 
         # calculate ERF
         # img.requires_grad = True
@@ -641,7 +644,7 @@ class EncoderDecoder(BaseSegmentor):
         else:
             adv_image, adv_patch = self.pgd_opt(img,label,loss_mask,adv_patch,patch_orig, img_meta, rescale,
                         init_tf_pts=init_tf_pts, 
-                        step_size = 1e-2, eps=200./255, iters=100, 
+                        step_size = 1e-2, eps=0./255, iters=1, 
                         target_label = 2,
                         deeplab=True,
                         alpha=1, beta=1, restarts=1, rap=True,  patch_mask=patch_mask, log=True)[:2]
