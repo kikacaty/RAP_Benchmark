@@ -5,6 +5,10 @@ from pdb import set_trace as st
 
 zero_thres = 1e-6
 
+grad_img = np.load('work_dirs/erf/drn_adv.npy')
+# plt.imsave('work_dirs/erf/psp_adv.png', np.clip(np.clip(np.abs(grad_img)-zero_thres, 0,1e8)*1e5,0,1).mean(-1), cmap='jet')
+plt.imsave('work_dirs/erf/drn_adv.png', np.clip(np.clip(np.abs(grad_img)-zero_thres, 0,1e8)*1e5,0,1).mean(-1), cmap='jet')
+
 grad_img = np.load('work_dirs/erf/psp_adv.npy')
 # plt.imsave('work_dirs/erf/psp_adv.png', np.clip(np.clip(np.abs(grad_img)-zero_thres, 0,1e8)*1e5,0,1).mean(-1), cmap='jet')
 plt.imsave('work_dirs/erf/psp_adv.png', np.clip(np.clip(np.abs(grad_img)-zero_thres, 0,1e8)*1e5,0,1).mean(-1), cmap='jet')

@@ -12,6 +12,8 @@ from mmseg.datasets import build_dataloader, build_dataset
 from mmseg.models import build_segmentor
 from IPython import embed
 
+import seaborn as sns
+
 from pdb import set_trace as st
 
 def parse_args():
