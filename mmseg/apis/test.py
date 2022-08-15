@@ -84,6 +84,8 @@ def single_gpu_attack(model,
     # grad_imgs = np.zeros([1024,2048,3])
 
     for i, data in enumerate(data_loader):
+        if i > 50:
+            break
         # with torch.no_grad():
 
         # if 'frankfurt_000000_000294_leftImg8bit.png' not in data['img_metas'][0].data[0][0]['filename']:

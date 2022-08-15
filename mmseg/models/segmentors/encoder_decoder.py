@@ -47,6 +47,45 @@ class TVLoss(nn.Module):
     def _tensor_size(self,t):
         return t.size()[1]*t.size()[2]*t.size()[3]
 
+import math
+class houdini_loss(nn.Module):
+    def __init__(self, use_cuda=True, num_class=19, ignore_index=255):
+        super(houdini_loss, self).__init__()
+        # self.cross_entropy = nn.CrossEntropyLoss(ignore_index=255)
+        self.use_cuda = use_cuda
+        self.num_class = num_class
+        self.ignore_index = ignore_index
+
+    def forward(self, logits, target):
+        pred = logits.max(1)[1].data
+        target = target.data
+        size = list(target.size())
+        if self.ignore_index is not None:
+            pred[pred == self.ignore_index] = self.num_class
+            target[target == self.ignore_index] = self.num_class
+        pred = torch.unsqueeze(pred, dim=1)
+        target = torch.unsqueeze(target, dim=1)
+        size.insert(1, self.num_class+1)
+        pred_onehot = torch.zeros(size)
+        target_onehot = torch.zeros(size)
+        if self.use_cuda:
+            pred_onehot = pred_onehot.cuda()
+            target_onehot = target_onehot.cuda()
+        pred_onehot = pred_onehot.scatter_(1, pred, 1).narrow(1, 0, self.num_class)
+
+        target_onehot = target_onehot.scatter_(1, target, 1).narrow(1, 0, self.num_class)
+        # pred_onehot = torch.Variable(pred_onehot)
+        # target_onehot = torch.Variable(target_onehot)
+        neg_log_softmax = -F.log_softmax(logits, dim=1)
+        # print(logits.size())
+        # print(neg_log_softmax.size())
+        # print(target_onehot.size())
+        twod_cross_entropy = torch.sum(neg_log_softmax*target_onehot, dim=1)
+        pred_score = torch.sum(logits*pred_onehot, dim=1)
+        target_score = torch.sum(logits*target_onehot, dim=1)
+        mask = 0.5 + 0.5 * (((pred_score-target_score)/math.sqrt(2)).erf())
+        return torch.mean(mask * twod_cross_entropy)
+
 @SEGMENTORS.register_module()
 class EncoderDecoder(BaseSegmentor):
     """Encoder Decoder segmentors.
@@ -350,7 +389,7 @@ class EncoderDecoder(BaseSegmentor):
 
         tv_loss = TVLoss()
 
-        # h_loss = houdini_loss()
+        loss = houdini_loss()
 
         # init transformation matrix
         h, w = images.shape[-2:]  # destination size
@@ -506,7 +545,9 @@ class EncoderDecoder(BaseSegmentor):
             # delta.data = (delta.data * 2 * eps - eps) * perturb_mask
 
             # optimizer = torch.optim.Adam([delta], lr=step_size)
-            optimizer = torch.optim.AdamW([delta], lr=step_size, weight_decay=0.01)
+            # optimizer = torch.optim.AdamW([delta], lr=step_size, weight_decay=0.01)
+            optimizer = torch.optim.SGD([delta], lr=step_size, momentum=0.9)
+
 
             for i in range(iters) :
 
@@ -565,12 +606,12 @@ class EncoderDecoder(BaseSegmentor):
     def simple_attack(self, img, img_meta,gt_semantic_seg, rescale=True):
         """Simple test with single image."""
 
-        with torch.no_grad():
-            seg_logit = self.inference(img, img_meta, rescale)
-            seg_pred = seg_logit.argmax(dim=1)
-            label = seg_pred.cpu().numpy()
+        # with torch.no_grad():
+        #     seg_logit = self.inference(img, img_meta, rescale)
+        #     seg_pred = seg_logit.argmax(dim=1)
+        #     label = seg_pred.cpu().numpy()
         
-        return list(label), img
+        # return list(label), img
 
 
         # calculate ERF
@@ -617,6 +658,8 @@ class EncoderDecoder(BaseSegmentor):
         init_tf_pts[0][:,0]+=shift
 
         patch_im = Image.open('phy_exp/cropped_patch.jpg')
+        # patch_im = Image.open('phy_exp/cropped_patch_smile.jpeg')
+        # patch_im = Image.open('phy_exp/road_patch.jpeg')
         patch_img = np.zeros_like(img.cpu())
         p_img = np.array(patch_im.resize((300,300)))/255.
         p_img = np.moveaxis(p_img,-1,0)
@@ -642,12 +685,12 @@ class EncoderDecoder(BaseSegmentor):
         if target_mask.sum() < 1e-8:
             adv_image = img
         else:
-            adv_image, adv_patch = self.pgd_opt(img,label,loss_mask,adv_patch,patch_orig, img_meta, rescale,
+            adv_image, adv_patch = self.pgd_t(img,label,loss_mask,adv_patch,patch_orig, img_meta, rescale,
                         init_tf_pts=init_tf_pts, 
-                        step_size = 1e-2, eps=0./255, iters=1, 
-                        target_label = 2,
+                        step_size = 1e-2, eps=100./255, iters=50, 
+                        target_label = 0,
                         deeplab=True,
-                        alpha=1, beta=1, restarts=1, rap=True,  patch_mask=patch_mask, log=True)[:2]
+                        alpha=0.8, beta=1, restarts=1, rap=True,  patch_mask=patch_mask, log=True)[:2]
         
         
         seg_logit = self.inference(adv_image, img_meta, rescale)
